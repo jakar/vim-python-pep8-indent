@@ -1,5 +1,15 @@
 require "spec_helper"
 
+shared_examples_for "hang_closing test" do |hc|
+  before { set_hang_closing hc }
+
+  it "sets hang_closing to #{hc}" do
+    hang_closing.should == !!hc
+  end
+end
+
+HANG_CLOSING_VALUES = [nil, false, true]
+
 shared_examples_for "vim" do
 
   before(:each) {
@@ -39,75 +49,81 @@ shared_examples_for "vim" do
     end
   end
 
-  describe "when after a '(' that is at the end of its line" do
-    before { vim.feedkeys 'itest(\<CR>' }
+  HANG_CLOSING_VALUES.each do |hc|
+    describe "when hang_closing is set to #{hc}" do
+      include_examples "hang_closing test", hc
 
-    it "indents by one level" do
-      proposed_indent.should == shiftwidth
-      vim.feedkeys 'something'
-      indent.should == shiftwidth
-      vim.normal '=='
-      indent.should == shiftwidth
-    end
+      describe "when after a '(' that is at the end of its line" do
+        before { vim.feedkeys 'itest(\<CR>' }
 
-    it "puts the closing parenthesis at the same level" do
-      vim.feedkeys ')'
-      indent.should == 0
-    end
-  end
+        it "indents by one level" do
+          proposed_indent.should == shiftwidth
+          vim.feedkeys 'something'
+          indent.should == shiftwidth
+          vim.normal '=='
+          indent.should == shiftwidth
+        end
 
-  describe "when after an '(' that is followed by something" do
-    before { vim.feedkeys 'itest(something,\<CR>' }
+        it "puts the closing parenthesis at the same level" do
+          vim.feedkeys ')'
+          indent.should == (hang_closing ? shiftwidth : 0)
+        end
+      end
 
-    it "lines up on following lines" do
-      indent.should == 5
-      vim.feedkeys 'more,\<CR>'
-      indent.should == 5
-    end
+      describe "when after an '(' that is followed by something" do
+        before { vim.feedkeys 'itest(something,\<CR>' }
 
-    it "lines up the closing parenthesis" do
-      vim.feedkeys ')'
-      indent.should == 5
-    end
+        it "lines up on following lines" do
+          indent.should == 5
+          vim.feedkeys 'more,\<CR>'
+          indent.should == 5
+        end
 
-    it "does not touch the closing parenthesis if it is already indented further" do
-      vim.feedkeys '  )'
-      indent.should == 7
-    end
-  end
+        it "lines up the closing parenthesis" do
+          vim.feedkeys ')'
+          indent.should == 5
+        end
 
-  describe "when after an '{' that is followed by a comment" do
-    before { vim.feedkeys 'imydict = {  # comment\<CR>' }
+        it "does not touch the closing parenthesis if it is already indented further" do
+          vim.feedkeys '  )'
+          indent.should == 7
+        end
+      end
 
-    it "indent by one level" do
-      indent.should == shiftwidth
-      vim.feedkeys '1: 1,\<CR>'
-      indent.should == shiftwidth
-    end
+      describe "when after an '{' that is followed by a comment" do
+        before { vim.feedkeys 'imydict = {  # comment\<CR>' }
 
-    it "lines up the closing parenthesis" do
-      vim.feedkeys '}'
-      indent.should == 0
-    end
-  end
+        it "indent by one level" do
+          indent.should == shiftwidth
+          vim.feedkeys '1: 1,\<CR>'
+          indent.should == shiftwidth
+        end
 
-  describe "when using gq to reindent a '(' that is" do
-    before { vim.feedkeys 'itest(' }
-    it "something and has a string without spaces at the end" do
-      vim.feedkeys 'something_very_long_blaaaaaaaaa, "some_very_long_string_blaaaaaaaaaaaaaaaaaaaa"\<esc>gqq'
-      indent.should == 5
-    end
-  end
+        it "lines up the closing parenthesis" do
+          vim.feedkeys '}'
+          indent.should == (hang_closing ? shiftwidth : 0)
+        end
+      end
 
-  describe "when after multiple parens of different types" do
-    it "indents by one level" do
-      vim.feedkeys 'if({\<CR>'
-      indent.should == shiftwidth
-    end
+      describe "when using gq to reindent a '(' that is" do
+        before { vim.feedkeys 'itest(' }
+        it "something and has a string without spaces at the end" do
+          vim.feedkeys 'something_very_long_blaaaaaaaaa, "some_very_long_string_blaaaaaaaaaaaaaaaaaaaa"\<esc>gqq'
+          indent.should == 5
+        end
+      end
 
-    it "lines up with the last paren" do
-      vim.feedkeys 'ifff({123: 456,\<CR>'
-      indent.should == 5
+      describe "when after multiple parens of different types" do
+        it "indents by one level" do
+          vim.feedkeys 'if({\<CR>'
+          indent.should == shiftwidth
+        end
+
+        it "lines up with the last paren" do
+          vim.feedkeys 'ifff({123: 456,\<CR>'
+          indent.should == 5
+        end
+      end
     end
   end
 
@@ -203,18 +219,24 @@ shared_examples_for "vim" do
       end
   end
 
-  describe "when using a function definition" do
+  HANG_CLOSING_VALUES.each do |hc|
+    describe "when using a function definition" do
+      include_examples "hang_closing test", hc
       it "indents shiftwidth spaces" do
-          vim.feedkeys 'idef long_function_name(\<CR>arg'
-          indent.should == shiftwidth * 2
+        vim.feedkeys 'idef long_function_name(\<CR>arg'
+        indent.should == shiftwidth * 2
       end
+    end
   end
 
-  describe "when using a class definition" do
+  HANG_CLOSING_VALUES.each do |hc|
+    describe "when using a class definition" do
+      include_examples "hang_closing test", hc
       it "indents shiftwidth spaces" do
-          vim.feedkeys 'iclass Foo(\<CR>'
-          indent.should == shiftwidth * 2
+        vim.feedkeys 'iclass Foo(\<CR>'
+        indent.should == shiftwidth * 2
       end
+    end
   end
 
   describe "when writing an 'else' block" do
@@ -229,44 +251,48 @@ shared_examples_for "vim" do
     end
   end
 
-  describe "when using parens and control statements" do
-    it "avoids ambiguity by using extra indentation" do
-      vim.feedkeys 'iif (111 and\<CR>'
-      if shiftwidth == 4
-        indent.should == shiftwidth * 2
-      else
-        indent.should == 4
-      end
-      vim.feedkeys '222):\<CR>'
-      indent.should == shiftwidth
-      vim.feedkeys 'pass\<CR>'
-      indent.should == 0
-    end
+  HANG_CLOSING_VALUES.each do |hc|
+    describe "when using parens and control statements" do
+      include_examples "hang_closing test", hc
 
-    it "still aligns parens properly if not ambiguous" do
-      vim.feedkeys 'iwhile (111 and\<CR>'
-      indent.should == 7
-      vim.feedkeys '222):\<CR>'
-      indent.should == shiftwidth
-      vim.feedkeys 'pass\<CR>'
-      indent.should == 0
-    end
-
-    it "still handles multiple parens correctly" do
-      vim.feedkeys 'iif (111 and (222 and 333\<CR>'
-      indent.should == 13
-      vim.feedkeys 'and 444\<CR>'
-      indent.should == 13
-      vim.feedkeys ')\<CR>'
-      if shiftwidth == 4
-        indent.should == shiftwidth * 2
-      else
-        indent.should == 4
+      it "avoids ambiguity by using extra indentation" do
+        vim.feedkeys 'iif (111 and\<CR>'
+        if shiftwidth == 4
+          indent.should == shiftwidth * 2
+        else
+          indent.should == 4
+        end
+        vim.feedkeys '222):\<CR>'
+        indent.should == shiftwidth
+        vim.feedkeys 'pass\<CR>'
+        indent.should == 0
       end
-      vim.feedkeys 'and 555):\<CR>'
-      indent.should == shiftwidth
-      vim.feedkeys 'pass\<CR>'
-      indent.should == 0
+
+      it "still aligns parens properly if not ambiguous" do
+        vim.feedkeys 'iwhile (111 and\<CR>'
+        indent.should == 7
+        vim.feedkeys '222):\<CR>'
+        indent.should == shiftwidth
+        vim.feedkeys 'pass\<CR>'
+        indent.should == 0
+      end
+
+      it "still handles multiple parens correctly" do
+        vim.feedkeys 'iif (111 and (222 and 333\<CR>'
+        indent.should == 13
+        vim.feedkeys 'and 444\<CR>'
+        indent.should == 13
+        vim.feedkeys ')\<CR>'
+        if shiftwidth == 4
+          indent.should == shiftwidth * 2
+        else
+          indent.should == 4
+        end
+        vim.feedkeys 'and 555):\<CR>'
+        indent.should == shiftwidth
+        vim.feedkeys 'pass\<CR>'
+        indent.should == 0
+      end
     end
   end
 
